@@ -1,0 +1,142 @@
+#!/bin/bash
+#=======================================================================
+#
+#          FILE:  df-alltegether
+#				  bash-script for Openmediavault
+# 
+#         USAGE:  install and remove it with install-remove.sh
+# 
+#   DESCRIPTION:  it creates a graph for the whole storagecapacity 
+#                 (used/free) in OMV
+# 
+#        AUTHOR:  Solo0815, thx to all Users of the OMV-Forums,
+#                 who added sample rrd-scripts
+#                 feel free to edit this file, but please share it in
+#                 the OMV-Forum:
+#                 http://forums.openmediavault.org/viewtopic.php?f=13&t=79#p244
+#       VERSION:  0.3
+#=======================================================================
+
+
+# Documentation/Howto:
+# http://www.korbinian-pauli.de/artikel/mit-lm-sensors-und-rrd-cpu-und-mb-temperatur-uberwachen
+# http://www.uvm.edu/~bcodding/ticker/archives/33
+# http://blog.stefan-betz.net/2009/1/6/collectd-und-rrdtool-im-einsatz
+# http://wiki.lugbz.de/HowTo/SelfMadeMonitoring
+# https://jeremy.visser.name/2010/02/23/enable-caching-in-collectd
+
+# Todo:
+# - bug testing
+
+# set -e
+# set -x
+
+. /etc/default/openmediavault
+. /usr/share/openmediavault/scripts/helper-functions
+
+OMV_COLLECTD_CONFIG=${OMV_COLLECTD_CONFIG:-"/etc/collectd/collectd.conf"}
+OMV_COLLECTD_RRDTOOL_MKGRAPH=${OMV_COLLECTD_RRDTOOL_MKGRAPH:-"/usr/sbin/omv-mkgraph"}
+OMV_JSFILE_CONFIGDIR="/var/www/openmediavault/js/omv/module/admin"
+
+OMV_RRD="/var/lib/collectd/rrd/localhost"
+
+## borrowed from OMV-df-script ### Thx Volker
+
+# Edit: I don't know, if we need this ;)
+# xmlstarlet sel -t \
+#   -o "LoadPlugin df" -n \
+#   -o "<Plugin df>" -n \
+#   -m "//system/fstab/mntent[not(contains(opts,'bind'))]" \
+# 	-v "concat('  MountPoint \"',dir,'\"')" -n \
+#   -b \
+#   -o "  IgnoreSelected false" -n \
+#   -o "</Plugin>" -n \
+#   ${OMV_CONFIG_FILE} | xmlstarlet unesc >> ${OMV_COLLECTD_CONFIG}
+
+# read the mounted FS
+FILENAME=$(xmlstarlet sel -t -m "//system/fstab/mntent[not(contains(opts,'bind'))]" \
+  -v "concat('df',translate(dir,'/','-'),' ')" -b ${OMV_CONFIG_FILE} | xmlstarlet unesc)
+
+# /## borrowed
+
+# Begin df-alltogether section in /usr/sbin/omv-mkgraph
+f_begin_section() {
+	echo -e "# <<< [openmediavault] df-alltogether-script" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+}
+
+# End sensors section in /usr/sbin/omv-mkgraph
+f_end_section() {
+	echo "# >>> [openmediavault] df-alltogether-script-script" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+}
+
+
+# hedader for fanspeed section in /usr/sbin/omv-mkgraph
+f_plugin_df_alltogether_header() {
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+# script: /usr/share/openmediavault/scripts/collectd.d/df-alltogether
+TITLE_DF_ALLTOGETHER="Total Disk usage"
+COLOR_LINE_DF_FREE="#00cc00" # green
+COLOR_LINE_DF_USED="#ff0000" # red
+COLOR_AREA_DF_FREE="#b7efb7" # green
+COLOR_AREA_DF_USED="#f7b7b7" # red
+
+EOF
+}
+
+f_create_rrdtool_begin(){
+timevariable="$1"
+timevariablepng="$(echo $timevariable | tr '[:upper:]' '[:lower:]')"
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+rrdtool graph \${IMGDIR}/df_alltogether-$timevariablepng.png --start \${${timevariable}START} \${DEFAULTS} --title "\${TITLE_DF_ALLTOGETHER}\${${timevariable}TITLE}" --slope-mode --lower-limit 0 --vertical-label "Bytes" \\
+EOF
+}
+
+
+f_create_rrdtool_script() {
+counter=0
+for mediauuid in ${FILENAME}; do
+	[ ! -e "$OMV_RRD/df/${mediauuid}.rrd" ] && continue
+	let counter++
+	echo "DEF:used${counter}=\${DATA}/df/${mediauuid}.rrd:used:AVERAGE DEF:free${counter}=\${DATA}/df/${mediauuid}.rrd:free:AVERAGE \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+	#echo "DEF:free${counter}=$OMV_RRD/df/${mediauuid}.rrd:free:AVERAGE \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+done
+
+cdef_sum="CDEF:sum=used1,free1,+"
+cdef_used="CDEF:totused=used1"
+cdef_free="CDEF:totfree=free1"
+
+for count_mediauuid in $(seq 1 $counter); do
+	if [ $count_mediauuid -gt 1 ]; then
+		cdef_sum="$(echo "${cdef_sum},used${count_mediauuid},+,free${count_mediauuid},+")"
+		cdef_free="$(echo "${cdef_free},free${count_mediauuid},+")"
+		cdef_used="$(echo "${cdef_used},used${count_mediauuid},+")"
+	fi
+done
+
+echo -e "$cdef_sum $cdef_used $cdef_free \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+#echo -e "$cdef_used \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+AREA:sum\${COLOR_AREA_DF_FREE} AREA:totused\${COLOR_AREA_DF_USED} \
+LINE1:sum#000000:"Total" GPRINT:sum:AVERAGE:"%5.1lf%sB Avg" GPRINT:sum:LAST:"%5.1lf%sB Last\l" \
+LINE1:sum\${COLOR_LINE_DF_FREE}:"Free" GPRINT:totfree:AVERAGE:"%5.1lf%sB Avg" GPRINT:totfree:LAST:"%5.1lf%sB Last\l" \
+LINE1:totused\${COLOR_LINE_DF_USED}:"Used" GPRINT:totused:AVERAGE:"%5.1lf%sB Avg" GPRINT:totused:LAST:"%5.1lf%sB Last\l" COMMENT:"\${LASTUPDATE}" >/dev/null
+EOF
+}
+
+
+######################################################################
+# Main body of script
+######################################################################
+
+# Deletes the existing section of the sensors-script
+sed -i '/#\ <<<\ \[openmediavault\]\ df-alltogether-script/,/#\ >>>\ \[openmediavault\]\ df-alltogether-script/d' $OMV_COLLECTD_RRDTOOL_MKGRAPH > /dev/null 2>&1
+
+# begin new sensor-section in omv-mkgraph
+f_begin_section
+f_plugin_df_alltogether_header
+for rrdtime in HOUR DAY WEEK MONTH YEAR; do
+	f_create_rrdtool_begin $rrdtime
+	f_create_rrdtool_script
+done
+f_end_section
+exit 0
