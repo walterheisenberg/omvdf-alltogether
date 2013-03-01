@@ -83,16 +83,16 @@ f_install() {
 	f_checksuccess
 
 
-	if [ -f /var/www/openmediavault/js/omv/module/admin/Systeminfo.js -a ! -f /var/www/openmediavault/js/omv/module/admin/Systeminfo.js.backup ]; then
-		echo -ne "Systeminfo.js found! Making backup to /var/www/openmediavault/js/omv/module/admin/Systeminfo.js.backup ... "
-		mv /var/www/openmediavault/js/omv/module/admin/Systeminfo.js /var/www/openmediavault/js/omv/module/admin/Systeminfo.js.backup > /dev/null 2>&1
+	if [ -f /var/www/openmediavault/js/omv/module/admin/SystemInfo.js -a ! -f /var/www/openmediavault/js/omv/module/admin/SystemInfo.js.backup ]; then
+		echo -ne "SystemInfo.js found! Making backup to /var/www/openmediavault/js/omv/module/admin/SystemInfo.js.backup ... "
+		mv /var/www/openmediavault/js/omv/module/admin/SystemInfo.js /var/www/openmediavault/js/omv/module/admin/SystemInfo.js.backup > /dev/null 2>&1
 		f_checksuccess
 	else
-		echo -ne "Systeminfo.js.backup found! No backup is needed ... "
+		echo -ne "SystemInfo.js.backup found! No backup is needed ... "
 	fi
 		
-	echo -ne "Systeminfo.js >>> /var/www/openmediavault/js/omv/module/admin ... "
-	cp Systeminfo.js /var/www/openmediavault/js/omv/module/admin > /dev/null 2>&1
+	echo -ne "\nSystemInfo.js >>> /var/www/openmediavault/js/omv/module/admin ... "
+	cp SystemInfo.js /var/www/openmediavault/js/omv/module/admin > /dev/null 2>&1
 	f_checksuccess
 
 # 	echo -ne "Fanspeed.default /var/www/openmediavault/js/omv/module/admin ... "
@@ -193,24 +193,24 @@ f_remove() {
 # 	fi
 
 	if [ -f /usr/share/openmediavault/scripts/collectd.d/df-alltogether ]; then
-		echo -ne "Systeminfo.js found! Making backup to /var/www/openmediavault/js/omv/module/admin/Systeminfo.js.bak ... "
+		echo -ne "removing df-alltogether ... "
 		rm /usr/share/openmediavault/scripts/collectd.d/df-alltogether > /dev/null 2>&1
 		f_checksuccess
 	else
 		echo -ne "\n/usr/share/openmediavault/scripts/collectd.d/df-alltogether not found!"
 	fi
 
-	if [ -f /var/www/openmediavault/js/omv/module/admin/Systeminfo.js -a -f /var/www/openmediavault/js/omv/module/admin/Systeminfo.js.backup ]; then
-		echo -ne "restoring Backup of /var/www/openmediavault/js/omv/module/admin/Systeminfo.js ... "
+	if [ -f /var/www/openmediavault/js/omv/module/admin/SystemInfo.js -a -f /var/www/openmediavault/js/omv/module/admin/SystemInfo.js.backup ]; then
+		echo -ne "\nrestoring Backup of /var/www/openmediavault/js/omv/module/admin/SystemInfo.js ... "
 		sleep 1
-		echo -ne "- removing /var/www/openmediavault/js/omv/module/admin/Systeminfo.js ... "
-		rm  /var/www/openmediavault/js/omv/module/admin/Systeminfo.js > /dev/null 2>&1
+		echo -ne "\n- removing /var/www/openmediavault/js/omv/module/admin/SystemInfo.js ... "
+		rm  /var/www/openmediavault/js/omv/module/admin/SystemInfo.js > /dev/null 2>&1
 		f_checksuccess
-		echo -ne "- renaming /var/www/openmediavault/js/omv/module/admin/Systeminfo.js.backup to /var/www/openmediavault/js/omv/module/admin/Systeminfo.js ... "
-		mv  /var/www/openmediavault/js/omv/module/admin/Systeminfo.js.backup /var/www/openmediavault/js/omv/module/admin/Systeminfo.js > /dev/null 2>&1
+		echo -ne "- renaming /var/www/openmediavault/js/omv/module/admin/SystemInfo.js.backup to /var/www/openmediavault/js/omv/module/admin/SystemInfo.js ... "
+		mv  /var/www/openmediavault/js/omv/module/admin/SystemInfo.js.backup /var/www/openmediavault/js/omv/module/admin/SystemInfo.js > /dev/null 2>&1
 		f_checksuccess
 	else
-		echo -ne "\n/var/www/openmediavault/js/omv/module/admin/Sensors.js.backup not found!"
+		echo -ne "\n/var/www/openmediavault/js/omv/module/admin/SystemInfo.js.backup not found!"
 		echo -ne "\nscript is not installed!"
 	fi
 
@@ -234,7 +234,7 @@ f_remove() {
 # 		f_checksuccess
 # 	fi
 
-	echo -e "Removing completed!"
+	echo -e "\nRemoving completed!"
 	echo "Have fun!"
 }
 

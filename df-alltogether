@@ -118,8 +118,8 @@ echo -e "$cdef_sum $cdef_used $cdef_free \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
 cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
 AREA:sum\${COLOR_AREA_DF_FREE} AREA:totused\${COLOR_AREA_DF_USED} \
 LINE1:sum#000000:"Total" GPRINT:sum:AVERAGE:"%5.1lf%sB Avg" GPRINT:sum:LAST:"%5.1lf%sB Last\l" \
-LINE1:sum\${COLOR_LINE_DF_FREE}:"Free" GPRINT:totfree:AVERAGE:"%5.1lf%sB Avg" GPRINT:totfree:LAST:"%5.1lf%sB Last\l" \
-LINE1:totused\${COLOR_LINE_DF_USED}:"Used" GPRINT:totused:AVERAGE:"%5.1lf%sB Avg" GPRINT:totused:LAST:"%5.1lf%sB Last\l" COMMENT:"\${LASTUPDATE}" >/dev/null
+LINE1:sum\${COLOR_LINE_DF_FREE}:"Free " GPRINT:totfree:AVERAGE:"%5.1lf%sB Avg" GPRINT:totfree:LAST:"%5.1lf%sB Last\l" \
+LINE1:totused\${COLOR_LINE_DF_USED}:"Used " GPRINT:totused:AVERAGE:"%5.1lf%sB Avg" GPRINT:totused:LAST:"%5.1lf%sB Last\l" COMMENT:"\${LASTUPDATE}" >/dev/null
 EOF
 }
 
