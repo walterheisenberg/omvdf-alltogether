@@ -13,7 +13,8 @@ to your /etc/collectd/collectd.conf in '<Plugin df>'
 so that it looks something like this:
 
 LoadPlugin df
-<Plugin df>
+
+\<Plugin df\>
 
 MountPoint "/media/926fb5ca-b54e-4dfc-828b-5f45ad072265"
 
@@ -29,7 +30,7 @@ IgnoreSelected false
 
 MountPoint "/"
 
-</Plugin>
+\</Plugin\>
 
 then restart the collect.d-daemon with 
 
