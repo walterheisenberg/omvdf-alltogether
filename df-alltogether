@@ -6,15 +6,16 @@
 # 
 #         USAGE:  install and remove it with install-remove.sh
 # 
-#   DESCRIPTION:  it creates a graph for the whole storagecapacity 
-#                 (used/free) in OMV
+#   DESCRIPTION:  it creates a graph for the whole storagecapacity
+#                 (used/free) and the root-filesystem in OMV
 # 
 #        AUTHOR:  Solo0815, thx to all Users of the OMV-Forums,
 #                 who added sample rrd-scripts
 #                 feel free to edit this file, but please share it in
 #                 the OMV-Forum:
-#                 http://forums.openmediavault.org/viewtopic.php?f=13&t=79#p244
-#       VERSION:  0.3
+#                 http://forums.openmediavault.org/viewtopic.php?f=13&t=1627
+#				  @ Volker: You can use this script in OMV, if you want to
+#       VERSION:  0.3.1
 #=======================================================================
 
 
@@ -40,24 +41,13 @@ OMV_JSFILE_CONFIGDIR="/var/www/openmediavault/js/omv/module/admin"
 
 OMV_RRD="/var/lib/collectd/rrd/localhost"
 
-## borrowed from OMV-df-script ### Thx Volker
-
-# Edit: I don't know, if we need this ;)
-# xmlstarlet sel -t \
-#   -o "LoadPlugin df" -n \
-#   -o "<Plugin df>" -n \
-#   -m "//system/fstab/mntent[not(contains(opts,'bind'))]" \
-# 	-v "concat('  MountPoint \"',dir,'\"')" -n \
-#   -b \
-#   -o "  IgnoreSelected false" -n \
-#   -o "</Plugin>" -n \
-#   ${OMV_CONFIG_FILE} | xmlstarlet unesc >> ${OMV_COLLECTD_CONFIG}
+## from OMV-df-script ### Thx Volker
 
 # read the mounted FS
 FILENAME=$(xmlstarlet sel -t -m "//system/fstab/mntent[not(contains(opts,'bind'))]" \
   -v "concat('df',translate(dir,'/','-'),' ')" -b ${OMV_CONFIG_FILE} | xmlstarlet unesc)
 
-# /## borrowed
+## / from OMV-df-script ### Thx Volker
 
 # Begin df-alltogether section in /usr/sbin/omv-mkgraph
 f_begin_section() {
@@ -70,7 +60,7 @@ f_end_section() {
 }
 
 
-# hedader for fanspeed section in /usr/sbin/omv-mkgraph
+# hedader for df-alltogether section in /usr/sbin/omv-mkgraph
 f_plugin_df_alltogether_header() {
 cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
 # script: /usr/share/openmediavault/scripts/collectd.d/df-alltogether
@@ -83,6 +73,7 @@ COLOR_AREA_DF_USED="#f7b7b7" # red
 EOF
 }
 
+# create a new rrdtool-line in ${OMV_COLLECTD_RRDTOOL_MKGRAPH} for every filesystem mounted in OMV (hour, day, week, month, year)
 f_create_rrdtool_begin(){
 timevariable="$1"
 timevariablepng="$(echo $timevariable | tr '[:upper:]' '[:lower:]')"
@@ -91,14 +82,13 @@ rrdtool graph \${IMGDIR}/df_alltogether-$timevariablepng.png --start \${${timeva
 EOF
 }
 
-
+# finish the rrdtool-line in ${OMV_COLLECTD_RRDTOOL_MKGRAPH} created by f_create_rrdtool_begin()
 f_create_rrdtool_script() {
 counter=0
 for mediauuid in ${FILENAME}; do
 	[ ! -e "$OMV_RRD/df/${mediauuid}.rrd" ] && continue
 	let counter++
 	echo "DEF:used${counter}=\${DATA}/df/${mediauuid}.rrd:used:AVERAGE DEF:free${counter}=\${DATA}/df/${mediauuid}.rrd:free:AVERAGE \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
-	#echo "DEF:free${counter}=$OMV_RRD/df/${mediauuid}.rrd:free:AVERAGE \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
 done
 
 cdef_sum="CDEF:sum=used1,free1,+"
@@ -114,7 +104,6 @@ for count_mediauuid in $(seq 1 $counter); do
 done
 
 echo -e "$cdef_sum $cdef_used $cdef_free \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
-#echo -e "$cdef_used \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
 cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
 AREA:sum\${COLOR_AREA_DF_FREE} AREA:totused\${COLOR_AREA_DF_USED} \
 LINE1:sum#000000:"Total" GPRINT:sum:AVERAGE:"%5.1lf%sB Avg" GPRINT:sum:LAST:"%5.1lf%sB Last\l" \
@@ -123,20 +112,53 @@ LINE1:totused\${COLOR_LINE_DF_USED}:"Used " GPRINT:totused:AVERAGE:"%5.1lf%sB Av
 EOF
 }
 
+# # create a new full rrdtool-line in ${OMV_COLLECTD_RRDTOOL_MKGRAPH} for the root-filesystem (hour, day, week, month, year)
+f_create_root_rrdtool() {
+timevariable="$1"
+timevariablepng="$(echo $timevariable | tr '[:upper:]' '[:lower:]')"
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+rrdtool graph \${IMGDIR}/df_root-$timevariablepng.png --start \${${timevariable}START} \${DEFAULTS} --title "\${TITLE_DF_ALLTOGETHERROOT}\${${timevariable}TITLE}" --slope-mode --lower-limit 0 --vertical-label "Bytes" \\
+DEF:usedavg=\${DATA}/df/df-root.rrd:used:AVERAGE DEF:usedmin=\${DATA}/df/df-root.rrd:used:MIN DEF:usedmax=\${DATA}/df/df-root.rrd:used:MAX DEF:freeavg=\${DATA}/df/df-root.rrd:free:AVERAGE DEF:freemax=\${DATA}/df/df-root.rrd:free:MAX DEF:freemin=\${DATA}/df/df-root.rrd:free:MIN \\
+CDEF:tot=usedavg,freeavg,+ AREA:tot\${COLOR_AREA_DF_FREE} AREA:usedavg\${COLOR_AREA_DF_USED} \\
+LINE1:tot\${COLOR_LINE_DF_FREE}:"Free" GPRINT:freemin:MIN:"%5.1lf%sB Min" GPRINT:freeavg:AVERAGE:"%5.1lf%sB Avg" GPRINT:freemax:MAX:"%5.1lf%sB Max" GPRINT:freeavg:LAST:"%5.1lf%sB Last\l" \\
+LINE1:usedavg\${COLOR_LINE_DF_USED}:"Used" GPRINT:usedmin:MIN:"%5.1lf%sB Min" GPRINT:usedavg:AVERAGE:"%5.1lf%sB Avg" GPRINT:usedavg:MAX:"%5.1lf%sB Max" GPRINT:usedavg:LAST:"%5.1lf%sB Last\l" COMMENT:"\${LASTUPDATE}" >/dev/null
+EOF
+}
 
 ######################################################################
 # Main body of script
 ######################################################################
 
-# Deletes the existing section of the sensors-script
+# Don't forget to add 'MountPoint "/"' to /etc/collectd/collectd.conf
+# without this the "system"-graph is not working!
+
+# Deletes the existing section of the df-alltogether-script
 sed -i '/#\ <<<\ \[openmediavault\]\ df-alltogether-script/,/#\ >>>\ \[openmediavault\]\ df-alltogether-script/d' $OMV_COLLECTD_RRDTOOL_MKGRAPH > /dev/null 2>&1
 
-# begin new sensor-section in omv-mkgraph
+# begin new df-alltogether-section in omv-mkgraph
 f_begin_section
+
+# graph for "TotalDiskusage"
 f_plugin_df_alltogether_header
 for rrdtime in HOUR DAY WEEK MONTH YEAR; do
 	f_create_rrdtool_begin $rrdtime
 	f_create_rrdtool_script
 done
+
+# graph for the root-filesystem
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+
+TITLE_DF_ALLTOGETHERROOT="Root-Filesystem '/'"
+COLOR_LINE_DF_FREE="#00cc00" # green
+COLOR_LINE_DF_USED="#ff0000" # red
+COLOR_AREA_DF_FREE="#b7efb7" # green
+COLOR_AREA_DF_USED="#f7b7b7" # red
+EOF
+# ^^^ I thought of renaming it to "System-disk"?
+
+for rrdtime in HOUR DAY WEEK MONTH YEAR; do
+	f_create_root_rrdtool $rrdtime
+done
+
 f_end_section
 exit 0

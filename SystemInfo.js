@@ -392,6 +392,7 @@ Ext.extend(OMV.Module.Diagnostics.SysInfo.DiskUsage, Ext.TabPanel, {
 				  OMV.MessageBox.error(null, error);
 			  } else {
 				  
+				  // Tab for "TotalDiskUsage
 				  this.add(new OMV.RrdGraphPanel({
 					  title: "Total Disk Usage",
 					  rrdGraphName: "df_alltogether"
@@ -404,6 +405,13 @@ Ext.extend(OMV.Module.Diagnostics.SysInfo.DiskUsage, Ext.TabPanel, {
 							  replace(/\//g, "-")
 						}));
 				  }, this);
+				  
+				  // Tab for the root-filesystem
+				  this.add(new OMV.RrdGraphPanel({
+					  title: "System '/'",
+					  rrdGraphName: "df_root"
+				  }));
+				  
 			  }
 		  }, this, "FileSystemMgmt", "enumerateMountedFilesystems");
 		OMV.Module.Diagnostics.SysInfo.DiskUsage.superclass.initComponent.
