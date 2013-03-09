@@ -8,7 +8,7 @@ To see the graphs for the system-disk, please add:
 
 MountPoint "/"
 
-to your /etc/collectd/collectd.conf in '<Plugin df>'
+to your /etc/collectd/collectd.conf in '\<Plugin df\>'
 
 so that it looks something like this:
 
