@@ -1,0 +1,206 @@
+#!/bin/sh
+#
+# This file is part of OpenMediaVault.
+#
+# @license   http://www.gnu.org/licenses/gpl.html GPL Version 3
+# @author    Volker Theile <volker.theile@openmediavault.org>
+# @copyright Copyright (c) 2009-2014 Volker Theile
+#
+# OpenMediaVault is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# OpenMediaVault is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with OpenMediaVault. If not, see <http://www.gnu.org/licenses/>.
+
+# Documentation/Howto:
+# http://www.korbinian-pauli.de/artikel/mit-lm-sensors-und-rrd-cpu-und-mb-temperatur-uberwachen
+# http://www.uvm.edu/~bcodding/ticker/archives/33
+# http://blog.stefan-betz.net/2009/1/6/collectd-und-rrdtool-im-einsatz
+# http://wiki.lugbz.de/HowTo/SelfMadeMonitoring
+# https://jeremy.visser.name/2010/02/23/enable-caching-in-collectd
+
+set -e
+
+. /etc/default/openmediavault
+. /usr/share/openmediavault/scripts/helper-functions
+
+OMV_COLLECTD_CONFIG=${OMV_COLLECTD_CONFIG:-"/etc/collectd/collectd.conf"}
+OMV_COLLECTD_RRDTOOL_MKGRAPH=${OMV_COLLECTD_RRDTOOL_MKGRAPH:-"/usr/sbin/omv-mkgraph"}
+
+xmlstarlet sel -t \
+  -o "LoadPlugin df" -n \
+  -o "<Plugin df>" -n \
+  -m "//system/fstab/mntent[not(contains(opts,'bind'))]" \
+	-v "concat('  MountPoint \"',dir,'\"')" -n \
+  -b \
+  -o "  IgnoreSelected false" -n \
+  -o "</Plugin>" -n \
+  ${OMV_CONFIG_FILE} | xmlstarlet unesc >> ${OMV_COLLECTD_CONFIG}
+
+FILENAME=$(xmlstarlet sel -t -m "//system/fstab/mntent[not(contains(opts,'bind'))]" \
+  -v "concat('df',translate(dir,'/','-'),' ')" -b ${OMV_CONFIG_FILE} | xmlstarlet unesc)
+
+#############################################################################
+#############################################################################
+### inserted by df-alltogether
+
+# ????????????????????????????????
+# Where is this in OMV defined?
+OMV_RRD="/var/lib/collectd/rrd/localhost"
+# ????????????????????????????????
+
+# create a new rrdtool-line in ${OMV_COLLECTD_RRDTOOL_MKGRAPH} for every filesystem mounted in OMV (hour, day, week, month, year)
+f_create_rrdtool_begin() {
+timevariable="$1"
+timevariablepng="$(echo $timevariable | tr '[:upper:]' '[:lower:]')"
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+rrdtool graph \${IMGDIR}/df_alltogether-$timevariablepng.png --start \${${timevariable}START} \${DEFAULTS} --title "\${TITLE_DF_ALLTOGETHER}\${${timevariable}TITLE}" --slope-mode --lower-limit 0 --vertical-label "Bytes" \\
+EOF
+}
+
+# finish the rrdtool-line in ${OMV_COLLECTD_RRDTOOL_MKGRAPH} created by f_create_rrdtool_begin()
+f_create_rrdtool_script() {
+counter=0
+for mediauuid in ${FILENAME}; do
+	[ ! -e "$OMV_RRD/df/${mediauuid}.rrd" ] && continue
+	# let counter++ # not working in OMV!
+	counter=$(($counter+1))
+	echo "DEF:used${counter}=\${DATA}/df/${mediauuid}.rrd:used:AVERAGE DEF:free${counter}=\${DATA}/df/${mediauuid}.rrd:free:AVERAGE \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+done
+
+cdef_sum="CDEF:sum=used1,free1,+"
+cdef_used="CDEF:totused=used1"
+cdef_free="CDEF:totfree=free1"
+
+for count_mediauuid in $(seq 1 $counter); do
+	if [ $count_mediauuid -gt 1 ]; then
+		cdef_sum="$(echo "${cdef_sum},used${count_mediauuid},+,free${count_mediauuid},+")"
+		cdef_free="$(echo "${cdef_free},free${count_mediauuid},+")"
+		cdef_used="$(echo "${cdef_used},used${count_mediauuid},+")"
+	fi
+done
+
+echo "$cdef_sum $cdef_used $cdef_free \\" >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+AREA:sum\${COLOR_AREA_DF_FREE} \
+AREA:totused\${COLOR_AREA_DF_USED} \
+LINE1:sum#000000:"Total" GPRINT:sum:AVERAGE:"%5.1lf%sB Avg" \
+GPRINT:sum:LAST:"%5.1lf%sB Last\l" \
+LINE1:sum\${COLOR_LINE_DF_FREE}:"Free " \
+GPRINT:totfree:AVERAGE:"%5.1lf%sB Avg" \
+GPRINT:totfree:LAST:"%5.1lf%sB Last\l" \
+LINE1:totused\${COLOR_LINE_DF_USED}:"Used " \
+GPRINT:totused:AVERAGE:"%5.1lf%sB Avg" \
+GPRINT:totused:LAST:"%5.1lf%sB Last\l" \
+COMMENT:"\${LASTUPDATE}" >/dev/null
+EOF
+}
+
+### inserted by df-alltogether
+#############################################################################
+#############################################################################
+
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+# Plugin: df
+TITLE_DF="Disk usage"
+COLOR_LINE_DF_FREE="#00cc00" # green
+COLOR_LINE_DF_USED="#ff0000" # red
+COLOR_AREA_DF_FREE="#b7efb7" # green
+COLOR_AREA_DF_USED="#f7b7b7" # red
+for filename in ${FILENAME}; do
+	[ ! -e "\${DATA}/df/\${filename}.rrd" ] && continue
+EOF
+
+# made a function to make editing easier. You don't have to edit all 5 rrd-codelines
+for rrdtime in HOUR DAY WEEK MONTH YEAR; do
+	rrdtimepng="$(echo $rrdtime | tr '[:upper:]' '[:lower:]')"
+	cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+rrdtool graph \${IMGDIR}/\${filename}-${rrdtimepng}.png --start \${${rrdtime}START} \${DEFAULTS} --title "\${TITLE_DF}\${${rrdtime}TITLE}" --slope-mode --lower-limit 0 --vertical-label "Bytes" \
+	  DEF:favg=\${DATA}/df/\${filename}.rrd:free:AVERAGE \
+	  DEF:fmin=\${DATA}/df/\${filename}.rrd:free:MIN \
+	  DEF:fmax=\${DATA}/df/\${filename}.rrd:free:MAX \
+	  DEF:uavg=\${DATA}/df/\${filename}.rrd:used:AVERAGE \
+	  DEF:umin=\${DATA}/df/\${filename}.rrd:used:MIN \
+	  DEF:umax=\${DATA}/df/\${filename}.rrd:used:MAX \
+	  CDEF:sum=favg,uavg,+ \
+	  AREA:sum\${COLOR_AREA_DF_FREE} \
+	  AREA:uavg\${COLOR_AREA_DF_USED} \
+	  LINE1:sum\${COLOR_LINE_DF_FREE}:"Free" \
+	  GPRINT:fmin:MIN:"%5.1lf%sB Min" \
+	  GPRINT:favg:AVERAGE:"%5.1lf%sB Avg" \
+	  GPRINT:fmax:MAX:"%5.1lf%sB Max" \
+	  GPRINT:favg:LAST:"%5.1lf%sB Last\l" \
+	  LINE1:uavg\${COLOR_LINE_DF_USED}:"Used" \
+	  GPRINT:umin:MIN:"%5.1lf%sB Min" \
+	  GPRINT:uavg:AVERAGE:"%5.1lf%sB Avg" \
+	  GPRINT:umax:MAX:"%5.1lf%sB Max" \
+	  GPRINT:uavg:LAST:"%5.1lf%sB Last\l" \
+	  COMMENT:"\${LASTUPDATE}" >/dev/null
+EOF
+
+done # for rrdtime in HOUR DAY WEEK MONTH YEAR; do
+
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+done
+
+# >>> [openmediavault] df-alltogether-script-script
+TITLE_DF_ALLTOGETHERROOT="Root-Filesystem '/'"
+COLOR_LINE_DF_FREE="#00cc00" # green
+COLOR_LINE_DF_USED="#ff0000" # red
+COLOR_AREA_DF_FREE="#b7efb7" # green
+COLOR_AREA_DF_USED="#f7b7b7" # red
+EOF
+
+# ^^^ I thought of renaming it to "System-disk"?
+
+for rrdtime in HOUR DAY WEEK MONTH YEAR; do
+	rrdtimepng="$(echo $rrdtime | tr '[:upper:]' '[:lower:]')"
+	cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+rrdtool graph \${IMGDIR}/df_root-$rrdtimepng.png --start \${${rrdtime}START} \${DEFAULTS} --title "\${TITLE_DF_ALLTOGETHERROOT}\${${timevariable}TITLE}" --slope-mode --lower-limit 0 --vertical-label "Bytes" \
+	DEF:usedavg=\${DATA}/df/df-root.rrd:used:AVERAGE \
+	DEF:usedmin=\${DATA}/df/df-root.rrd:used:MIN \
+	DEF:usedmax=\${DATA}/df/df-root.rrd:used:MAX \
+	DEF:freeavg=\${DATA}/df/df-root.rrd:free:AVERAGE \
+	DEF:freemax=\${DATA}/df/df-root.rrd:free:MAX \
+	DEF:freemin=\${DATA}/df/df-root.rrd:free:MIN \
+	CDEF:tot=usedavg,freeavg,+ \
+	AREA:tot\${COLOR_AREA_DF_FREE} \
+	AREA:usedavg\${COLOR_AREA_DF_USED} \
+	LINE1:tot\${COLOR_LINE_DF_FREE}:"Free" \
+	GPRINT:freemin:MIN:"%5.1lf%sB Min" \
+	GPRINT:freeavg:AVERAGE:"%5.1lf%sB Avg" \
+	GPRINT:freemax:MAX:"%5.1lf%sB Max" \
+	GPRINT:freeavg:LAST:"%5.1lf%sB Last\l" \
+	LINE1:usedavg\${COLOR_LINE_DF_USED}:"Used" \
+	GPRINT:usedmin:MIN:"%5.1lf%sB Min" \
+	GPRINT:usedavg:AVERAGE:"%5.1lf%sB Avg" \
+	GPRINT:usedavg:MAX:"%5.1lf%sB Max" \
+	GPRINT:usedavg:LAST:"%5.1lf%sB Last\l" \
+	COMMENT:"\${LASTUPDATE}" >/dev/null
+EOF
+done # for rrdtime in HOUR DAY WEEK MONTH YEAR; do
+
+# for "df-alltogether"
+cat <<EOF >> ${OMV_COLLECTD_RRDTOOL_MKGRAPH}
+# script: /usr/share/openmediavault/scripts/collectd.d/df-alltogether
+TITLE_DF_ALLTOGETHER="Total Disk usage"
+COLOR_LINE_DF_FREE="#00cc00" # green
+COLOR_LINE_DF_USED="#ff0000" # red
+COLOR_AREA_DF_FREE="#b7efb7" # green
+COLOR_AREA_DF_USED="#f7b7b7" # red
+EOF
+
+for rrdtime in HOUR DAY WEEK MONTH YEAR; do
+	f_create_rrdtool_begin $rrdtime
+	f_create_rrdtool_script
+done
+
+exit 0
